@@ -7,12 +7,15 @@ import numpy as np
 import re
 import io
 import psycopg2
+# set STREAMLIT_WATCH_USE_POLLING=true 
 
+# streamlit run BizCard.py 
 
 
 def image_to_text(path):
     # Load the image
     input_Image = Image.open(path)
+    
     # Converting image to array format
     image_Array = np.array(input_Image)
 
@@ -28,78 +31,113 @@ def image_to_text(path):
     return text, input_Image
 
 
-
 def extract_text(text):
-    extract_dict = {'NAME' : [], 'DESIGNATION' : [], 'COMPANY NAME' : [], 'CONTACT' : [], 'EMAIL' : [], 'WEBSITE' : [],
-                    'ADDRESS' : [], 'PINCODE' : []}
-    
+    extract_dict = {
+        'NAME': [], 'DESIGNATION': [], 'COMPANY NAME': [],
+        'CONTACT': [], 'EMAIL': [], 'WEBSITE': [],
+        'ADDRESS': [], 'PINCODE': []
+    }
+
+    # Extract Name and Designation
     extract_dict['NAME'].append(text[0])
     extract_dict['DESIGNATION'].append(text[1])
     
+    # Process remaining text
     for i in range(2, len(text)):
         
+        # Capture all phone numbers (even if there are multiple)
         if text[i].startswith('+') or (text[i].replace('-', '').isdigit() and '-' in text[i]):
             extract_dict['CONTACT'].append(text[i])
-            
+        
+        # Capture email with .com
         elif '@' in text[i] and '.com' in text[i]:
             extract_dict['EMAIL'].append(text[i])
-            
-        elif 'WWW' in text[i] or 'www' in text[i] or 'Www' in text[i] or 'wWw' in text[i] or 'wwW' in text[i]:
+        
+        # Capture website (any format with www or .com)
+        elif 'www' in text[i].lower() or '.com' in text[i].lower():
             small = text[i].lower()
             extract_dict['WEBSITE'].append(small)
-            
-        elif 'TamilNadu' in text[i] or 'Tamil Nadu' in text[i] or text[i].isdigit() or 'TamilNadu' in text[i]:
-            pincode = text[i]
-            if 'Tamil Nadu' in pincode:
-                pincode = pincode.replace('Tamil Nadu', '')
-            if 'TamilNadu' in pincode:
-                pincode = pincode.replace('TamilNadu', '')
-            pincode = pincode.strip() 
-            extract_dict['PINCODE'].append(pincode)
-
-        elif re.match(r'^[A-Za-z]', text[i]):
+        
+        # Capture Pincode (6 digits only)
+        elif re.search(r'\b\d{6}\b', text[i]):
+            extract_dict['PINCODE'].append(text[i])
+        
+        # Capture Company Name (if it is single word or uppercase)
+        elif text[i].isupper() and len(text[i]) > 2:
             extract_dict['COMPANY NAME'].append(text[i])
-            
-        else :
+        
+        # Capture Address (ignore unwanted text like "digitals", "INSURANCE")
+        elif len(text[i].split()) > 2:  # If sentence length > 2, it's an address
             remove_colon = re.sub(r'[,;]', '', text[i])
             extract_dict['ADDRESS'].append(remove_colon)
         
-    for key, value in extract_dict.items():
-        if len(value) > 0 :
-            concadenate = ''.join(value)
-            extract_dict[key] = [concadenate]
-            
-        else :
-            value = 'NA'
-            extract_dict[key] = [value]
-            
-            
-    return extract_dict
+        # Ignore any garbage text like "digitals", "INSURANCE", "St ,"
+        else:
+            continue
     
-   
-   
+    # Concatenate and Clean All Values
+    for key, value in extract_dict.items():
+        if len(value) > 0:
+            concatenated = ', '.join(value)
+            extract_dict[key] = [concatenated]
+        else:
+            extract_dict[key] = ['NA']
+    
+    return extract_dict
+
+
 # Streamlit part
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 st.title(':violet[Bizcardx Extracting Business Card Data with OCR]')
 with st.sidebar:
-    selected = option_menu('Main Menu',['Home', 'Upload & Modify', 'Delete'])
-    
+    selected = option_menu(
+        'Main Menu',
+        ['Home', 'Upload & Modify', 'Delete'],
+        icons=['house', 'cloud-upload', 'trash'],
+        menu_icon="cast",  # Sidebar icon
+        default_index=0,
+        orientation='vertical',
+        styles={
+            "container": {"padding": "5px", "background-color": "#F2EFD6"},
+            "icon": {"color": "#cc3366", "font-size": "20px"},
+            "nav-link": {
+                "font-size": "18px",
+                "color": "#2C3E50",
+                "padding": "10px",
+                "border-radius": "5px"
+            },
+            "nav-link-selected": {
+                "background-color": "#1ABC9C",
+                "color": "white",
+                "font-weight": "bold"
+            },
+        }
+    )
+
     
 if selected == 'Home':
 
-        st.subheader(":green[**Technologies Used:**] Python, easy OCR, Streamlit, PostgreSQL, Pandas")
+        if selected == 'Home':
 
-        st.markdown(":black[This streamlit web application allows you to upload an image of a business card and use easyOCR to extract the necessary information from it. In this programme, the extracted data can be viewed, changed, or removed. Additionally, users of this software would be able to upload a photo of their business card and save the extracted data with it to a database. Each entry would have its own business card image and extracted data, and the database would be able to store many entries.]")
+            st.subheader("**:blue[Technologies Used:]** :green[Python, easyOCR, Streamlit, PostgreSQL, Pandas]")
 
-        st.write(":red[Note:]:orange[ Only business cards are permitted to be used.]")
+            st.markdown("""
+    <p style='color:black'>
+    This Streamlit web application allows you to upload an image of a business card and use EasyOCR to extract the necessary information from it. 
+    In this program, the extracted data can be viewed, changed, or removed. Additionally, users of this software would be able to upload a photo 
+    of their business card and save the extracted data with it to a database. Each entry would have its own business card image and extracted data, 
+    and the database would be able to store many entries.
+    </p>
+    """, unsafe_allow_html=True)
 
-        
+            st.write(":red[Note:]:orange[ Only business cards are permitted to be used.]")
+
 
 if selected == 'Upload & Modify':
-    Upload_card = st.file_uploader('Upload here', type=['png', 'jpg', 'jpeg'])
+    Upload_card = st.file_uploader(':red[Upload here]', type=['png', 'jpg', 'jpeg'])
     
     if Upload_card is not None:
-        st.image(Upload_card, width= 300)
+        st.image(Upload_card, width=500, caption="Uploaded Business Card")
         
         text, input_Image = image_to_text(Upload_card)
         extract_dict = extract_text(text)
@@ -113,6 +151,7 @@ if selected == 'Upload & Modify':
         image_To_Bytes = io.BytesIO()
         input_Image.save(image_To_Bytes, format= 'PNG')
         image_Data = image_To_Bytes.getvalue()
+        
         # Creating dictionary 
         data = {'IMAGE' : [image_Data]}
         df_2 = pd.DataFrame(data)
@@ -120,7 +159,8 @@ if selected == 'Upload & Modify':
         st.dataframe(concat_df)
         
         
-        Button_save = st.button('Save')
+        # Button_save = st.button('Save')
+        st.markdown("<style>div.stButton > button {background-color: #4CAF50; color: black; font-size: 18px; padding: 0.75em 2em;}</style>", unsafe_allow_html=True); Button_save = st.button('Save')
         if Button_save:
             # Connecting to PostgreSQL
             postgres_Connection = psycopg2.connect(user="postgres",
@@ -156,10 +196,11 @@ if selected == 'Upload & Modify':
                 postgres_Connection.rollback()  # Rollback the transaction
             st.success('DATA SAVED SUCCESFULLY')
         
-    Method = st.radio('Select the method', ['None','Preview', 'Modify'])
-    if Method == 'None' :
+        
+    Method = st.radio(':red[Select the method]', ['None','Preview', 'Modify'])
+    if Method == 'None':
         pass
-    elif Method == 'Preview' :
+    elif Method == 'Preview':
         # Connecting to PostgreSQL
         postgres_Connection = psycopg2.connect(user="postgres",
                                                 password="sudhakar",
@@ -171,11 +212,10 @@ if selected == 'Upload & Modify':
         Select_table_query = 'select * from Bizcard_info'
         postgres_Cursor.execute(Select_table_query)
         Table_1 = postgres_Cursor.fetchall()
-        postgres_Connection.commit()
         Table_Df_1 = pd.DataFrame(Table_1, columns=('Name', 'Designation', 'Company_name', 'Contact', 'Email', 'Website', 'Address', 'pin_code', 'Image'))
         st.dataframe(Table_Df_1)
         
-    elif Method == 'Modify' :
+    elif Method == 'Modify':
         # Connecting to PostgreSQL
         postgres_Connection = psycopg2.connect(user="postgres",
                                                 password="sudhakar",
@@ -188,7 +228,6 @@ if selected == 'Upload & Modify':
         Select_table_query_2 = 'select * from Bizcard_info'
         postgres_Cursor.execute(Select_table_query_2)
         Table_2 = postgres_Cursor.fetchall()
-        postgres_Connection.commit()
         Table_Df_2 = pd.DataFrame(Table_2, columns=('Name', 'Designation', 'Company_name', 'Contact', 'Email', 'Website', 'Address', 'pin_code', 'Image'))
         
         column1, column2 = st.columns(2)
@@ -230,7 +269,7 @@ if selected == 'Upload & Modify':
         with column1:
             
             Modify_Button = st.button('MODIFY', use_container_width= True)
-            
+
         if Modify_Button :
             # Connecting to PostgreSQL
             postgres_Connection = psycopg2.connect(user="postgres",
@@ -272,7 +311,6 @@ if selected == 'Delete':
         Select_table_query = 'select Name from Bizcard_info'
         postgres_Cursor.execute(Select_table_query)
         Table_1 = postgres_Cursor.fetchall()
-        postgres_Connection.commit()
 
         Names = []
         for i in Table_1 :
@@ -286,7 +324,6 @@ if selected == 'Delete':
         Select_table_query = f"select Designation from Bizcard_info where Name = '{Name_select}' "
         postgres_Cursor.execute(Select_table_query)
         Table_2 = postgres_Cursor.fetchall()
-        postgres_Connection.commit()
 
         Designation = []
         for j in Table_2 :
@@ -296,24 +333,15 @@ if selected == 'Delete':
         
     
     if Name_select and Designation_select :
-        column1, column2, column3 = st.columns(3)
-        with column1 :
-            st.write(f"Selected Name : '{Name_select}' ")
-            st.write()
-            st.write()
-            st.write()
-            st.write(f"Designation Name : '{Designation_select}' ")
-            
-        with column2 :
-            st.write()
-            st.write()
-            st.write()
 
-        Delete_button = st.button(':blue[Delete]')   
+        st.write(f"Selected Name : '{Name_select}' ")
+        st.write(f"Designation Name : '{Designation_select}' ")
+
+        # Delete_button = st.button(':blue[Delete]')   
+        st.markdown("<style>div.stButton > button {background-color: #f44336; color: white; font-size: 18px; padding: 0.75em 2em; border-radius: 8px;}</style>", unsafe_allow_html=True); Delete_button = st.button('Delete')
         
         if Delete_button :
             postgres_Cursor.execute(f"Delete from Bizcard_info where Name = '{Name_select}' and Designation = '{Designation_select}' ")
             postgres_Connection.commit()
             
             st.warning("DELETED SUCCESSFULLY")
-
